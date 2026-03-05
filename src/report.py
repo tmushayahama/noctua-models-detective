@@ -27,10 +27,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
-try:
-    from src.common import AnsiStripper
-except ImportError:
-    from common import AnsiStripper
+from src.common import AnsiStripper
 
 
 # ---------------------------------------------------------------------------

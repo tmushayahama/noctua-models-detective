@@ -20,10 +20,7 @@ Example::
 import re
 from dataclasses import dataclass
 
-try:
-    from src.common import AnsiStripper
-except ImportError:
-    from common import AnsiStripper
+from src.common import AnsiStripper
 
 
 # ---------------------------------------------------------------------------

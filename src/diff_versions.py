@@ -21,12 +21,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-try:
-    from src.humanize import substitute_ontology_labels
-    from src.resolve_metadata import substitute_metadata
-except ImportError:
-    from humanize import substitute_ontology_labels
-    from resolve_metadata import substitute_metadata
+from src.humanize import substitute_ontology_labels
+from src.resolve_metadata import substitute_metadata
 
 
 # ---------------------------------------------------------------------------

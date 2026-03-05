@@ -9,7 +9,7 @@
 OUTPUT_DIR="downloads/reactome"
 MODEL_ID="R-HSA-8964539"
 REPO_PATH="../noctua-models-temp"
-AFTER="2020-02-01"
+AFTER="2024-02-01"
 
 python -m src.pipeline \
     -o "$OUTPUT_DIR" \

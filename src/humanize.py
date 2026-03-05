@@ -21,12 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote, unquote_plus, parse_qs
 
-try:
-    from src.common import AnsiStripper
-    from src.resolve_metadata import substitute_metadata
-except ImportError:
-    from common import AnsiStripper
-    from resolve_metadata import substitute_metadata
+from src.common import AnsiStripper
+from src.resolve_metadata import substitute_metadata
 
 
 # ---------------------------------------------------------------------------

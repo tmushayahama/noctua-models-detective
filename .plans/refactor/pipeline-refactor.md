@@ -1,58 +1,65 @@
-# Task: Refactor pipeline.py into Pipeline class with 3 usage modes
+# Task: Modular pipeline refactor
 
 **Status:** COMPLETE
 **Branch:** main
 
 ## Goal
 
-Refactor `pipeline.py` from monolithic `run()` into a `Pipeline` class with 3 modes (full, log-only, repo-only). Update CLI, README, and docstrings.
+Refactor pipeline from monolithic class-with-methods into a properly modular step-based architecture. Each step is its own class, modes are just lists of steps, shared state flows through a context object.
 
 ## Context
 
-- **Related files:** `src/pipeline.py`, `README.md`
-- **Triggered by:** User request to professionalize the pipeline
+- **Related files:** `src/pipeline.py`, `src/steps.py`
+- **Triggered by:** Previous refactor was just functions wrapped in a class — not truly modular
 
-## Steps
+## Architecture
 
-### Phase 1: Rewrite `src/pipeline.py`
+```
+PipelineContext (dataclass)     — shared state bag (paths, config, intermediate outputs)
+    |
+Step classes (in steps.py)      — each has `name` + `run(ctx)`, imports lazily
+    |
+Mode presets (FULL / LOG_ONLY / REPO_ONLY) — plain lists of step instances
+    |
+Pipeline (in pipeline.py)      — iterates steps, prints progress, that's it
+    |
+CLI (in pipeline.py)           — argparse, auto-detects mode via Pipeline.from_args()
+```
 
-- [x] `Pipeline` class with `__init__(output_dir, model_id, log_file=None, repo_path=None, after=None)`
-- [x] Shared `_labels` dict for ontology cache; `_step`/`_total_steps` counter; `_log()` helper
-- [x] Private step methods: `_step_clean`, `_step_filter`, `_step_resolve_ontology`, `_step_metadata`, `_step_humanize`, `_step_extract`, `_step_resolve_ontology_ttl`, `_step_diff`, `_step_report`
-- [x] Three public methods: `run_full()` (9 steps), `run_log_only()` (6 steps), `run_repo_only()` (4 steps), `run()` (auto-detect)
-- [x] New CLI with named args: `-f/--file`, `-o/--outdir`, `-m/--model`, `-r/--repo`, `--after`
-- [x] Validation: at least `--file` or `--repo` required
-- [x] Module docstring with 3 usage examples
+## Steps Done
 
-### Phase 2: Update `README.md`
+### Phase 1: Create `src/steps.py`
+- [x] `PipelineContext` dataclass with input config + intermediate output slots
+- [x] 9 step classes: `CleanStep`, `FilterStep`, `ResolveOntologyStep`, `ResolveMetadataStep`, `HumanizeStep`, `ExtractVersionsStep`, `ResolveOntologyTtlStep`, `DiffStep`, `ReportStep`
+- [x] 3 mode presets: `FULL_STEPS`, `LOG_ONLY_STEPS`, `REPO_ONLY_STEPS`
 
-- [x] Pipeline diagram showing 3 modes
-- [x] "Usage modes" section with examples
-- [x] Add pyyaml to requirements
-- [x] Document caches (ontology_cache.json, metadata_cache.json)
-- [x] Update project structure tree with all modules
-- [x] Add entries for new modules
+### Phase 2: Rewrite `src/pipeline.py`
+- [x] `Pipeline` class: just `__init__(ctx, steps)` + `run()` loop
+- [x] `Pipeline.from_args()` factory: builds context, picks step list
+- [x] CLI unchanged (same args, same `--help` output)
 
-### Phase 3: Verify
+### Phase 3: Clean up imports
+- [x] Remove all `try/except ImportError` dual-import hacks from `clean.py`, `humanize.py`, `diff_versions.py`, `report.py`
+- [x] Use direct `from src.X import Y` everywhere
 
-- [x] Test repo-only: `python -m src.pipeline -o downloads/ -m 693b3c0900004140 -r C:/work/go/noctua-models-temp --after 2026-02-01`
-- [x] Test `--help` output
-
-## Recovery Checkpoint
-
-> ✅ TASK COMPLETE
+### Phase 4: Verify
+- [x] `python -c "from src.pipeline import Pipeline"` — OK
+- [x] `python -m src.pipeline --help` — same output as before
 
 ## Summary
 
-- Rewrote `pipeline.py` with a `Pipeline` class (3 public run methods, 9 private step helpers, ~190 lines)
-- CLI changed from positional to named args, log file now optional
-- README updated with full docs: 3 usage modes, all modules, caches, project structure
-- Repo-only mode tested and working
+- `pipeline.py`: 100 lines (was 250). Just Pipeline + CLI, no business logic.
+- `steps.py`: 130 lines. All step logic, context, and mode presets.
+- Adding/removing/reordering steps = editing a list, not touching orchestration.
+- No dual-import hacks anywhere in the codebase.
 
 ## Files Modified
 
 | File | Action | Status |
 | ---- | ------ | ------ |
-| `src/pipeline.py` | Rewrite with Pipeline class | Done |
-| `README.md` | Update with 3 modes, new modules | Done |
-| `.plans/refactor/pipeline-refactor.md` | Plan file | Done |
+| `src/steps.py` | New — step classes, context, mode presets | Done |
+| `src/pipeline.py` | Rewrite — thin Pipeline + CLI | Done |
+| `src/clean.py` | Fix imports | Done |
+| `src/humanize.py` | Fix imports | Done |
+| `src/diff_versions.py` | Fix imports | Done |
+| `src/report.py` | Fix imports | Done |
