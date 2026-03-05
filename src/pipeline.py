@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""End-to-end pipeline: clean a raw barista log and generate an analysis report.
+"""GO Noctua model analysis pipeline.
 
-Takes a dirty log file and an output directory, produces a cleaned log and
-a text report.
+Supports three usage modes depending on available inputs:
 
-Usage::
+Full pipeline (log + model repo)::
 
-    python src/pipeline.py <logfile> <outdir>
+    python -m src.pipeline -f logs/hold.log -o downloads/ \\
+        -m 693b3c0900004140 -r C:/work/go/noctua-models-temp --after 2026-02-01
 
-Example::
+Log only (no repo)::
 
-    python src/pipeline.py hold.log/hold.log output/
-    # output/hold_clean.log   — cleaned log
-    # output/hold_report.txt  — analysis report
+    python -m src.pipeline -f logs/hold.log -o downloads/ -m 693b3c0900004140
+
+Repo only (no log file)::
+
+    python -m src.pipeline -o downloads/ -m 693b3c0900004140 \\
+        -r C:/work/go/noctua-models-temp --after 2026-02-01
 """
 
 import argparse
@@ -25,8 +28,8 @@ try:
     from src.filter_model import filter_by_model
     from src.humanize import humanize
     from src.report import generate_report
-    from src.resolve_ontology import load_cache, collect_ids_from_files, resolve, save_cache
     from src.resolve_metadata import load_cache as load_meta_cache, refresh_cache as refresh_meta
+    from src.resolve_ontology import load_cache, collect_ids_from_files, resolve, save_cache
 except ImportError:
     from clean import clean_file
     from diff_versions import diff_versions
@@ -34,133 +37,213 @@ except ImportError:
     from filter_model import filter_by_model
     from humanize import humanize
     from report import generate_report
-    from resolve_ontology import load_cache, collect_ids_from_files, resolve, save_cache
     from resolve_metadata import load_cache as load_meta_cache, refresh_cache as refresh_meta
+    from resolve_ontology import load_cache, collect_ids_from_files, resolve, save_cache
 
 
-def run(
-    input_file: str,
-    output_dir: str,
-    model_id: str | None = None,
-    repo_path: str | None = None,
-    after: str | None = None,
-) -> None:
-    """Run the full clean + filter + report pipeline."""
-    inpath = Path(input_file)
-    outdir = Path(output_dir)
-    outdir.mkdir(parents=True, exist_ok=True)
+class Pipeline:
+    """GO model analysis pipeline with three execution modes."""
 
-    stem = inpath.stem
-    clean_path = outdir / f"{stem}_clean.log"
+    def __init__(
+        self,
+        output_dir: str,
+        model_id: str,
+        log_file: str | None = None,
+        repo_path: str | None = None,
+        after: str | None = None,
+    ):
+        self._outdir = Path(output_dir)
+        self._model_id = model_id
+        self._log_file = Path(log_file) if log_file else None
+        self._repo_path = repo_path
+        self._after = after
+        self._step = 0
+        self._total_steps = 0
+        self._labels: dict[str, str] = {}
 
-    has_model = model_id is not None
-    has_repo = has_model and repo_path is not None
-    steps = 1 + (5 if has_model else 0) + (3 if has_repo else 0) + 1
-    step = 0
+    def _log(self, message: str) -> None:
+        self._step += 1
+        print(f"[{self._step}/{self._total_steps}] {message}")
 
-    # Step: Clean
-    step += 1
-    print(f"[{step}/{steps}] Cleaning {inpath} ...")
-    stats = clean_file(str(inpath), str(clean_path))
-    print(f"       {stats}")
-    print(f"       Cleaned log: {clean_path}")
+    def _info(self, message: str) -> None:
+        print(f"       {message}")
 
-    # Step: Filter by model
-    report_source = clean_path
-    if has_model:
-        filtered_path = outdir / f"{stem}_clean_{model_id}.log"
-        step += 1
-        print(f"[{step}/{steps}] Filtering for model {model_id} ...")
-        fstats = filter_by_model(str(clean_path), model_id, str(filtered_path))
-        print(f"       {fstats}")
-        print(f"       Filtered log: {filtered_path}")
-        report_source = filtered_path
+    # ------------------------------------------------------------------
+    # Step helpers
+    # ------------------------------------------------------------------
 
-        # Step: Resolve ontology labels
-        step += 1
-        print(f"[{step}/{steps}] Resolving ontology labels ...")
-        labels = load_cache()
-        ids = collect_ids_from_files([str(filtered_path)])
-        n_resolved = resolve(ids, labels)
-        save_cache(labels)
-        print(f"       {n_resolved} new labels resolved ({len(labels)} cached).")
+    def _step_clean(self) -> Path:
+        stem = self._log_file.stem
+        clean_path = self._outdir / f"{stem}_clean.log"
+        self._log(f"Cleaning {self._log_file} ...")
+        stats = clean_file(str(self._log_file), str(clean_path))
+        self._info(str(stats))
+        self._info(f"Cleaned log: {clean_path}")
+        return clean_path
 
-        # Step: Resolve contributor/group metadata
-        step += 1
+    def _step_filter(self, clean_path: Path) -> Path:
+        stem = self._log_file.stem
+        filtered_path = self._outdir / f"{stem}_clean_{self._model_id}.log"
+        self._log(f"Filtering for model {self._model_id} ...")
+        fstats = filter_by_model(str(clean_path), self._model_id, str(filtered_path))
+        self._info(str(fstats))
+        self._info(f"Filtered log: {filtered_path}")
+        return filtered_path
+
+    def _step_resolve_ontology(self, files: list[str]) -> None:
+        self._log("Resolving ontology labels ...")
+        if not self._labels:
+            self._labels = load_cache()
+        ids = collect_ids_from_files(files)
+        n = resolve(ids, self._labels)
+        save_cache(self._labels)
+        self._info(f"{n} new labels resolved ({len(self._labels)} cached).")
+
+    def _step_resolve_ontology_ttl(self, models_dir: Path) -> None:
+        self._log("Resolving ontology labels from TTL files ...")
+        if not self._labels:
+            self._labels = load_cache()
+        ttl_files = [str(p) for p in (models_dir / "by_folder").rglob("*.ttl")]
+        ids = collect_ids_from_files(ttl_files)
+        n = resolve(ids, self._labels)
+        save_cache(self._labels)
+        self._info(f"{n} new labels resolved ({len(self._labels)} cached).")
+
+    def _step_metadata(self) -> None:
         meta = load_meta_cache()
-        if not meta.get("users") or not meta.get("groups"):
-            print(f"[{step}/{steps}] Fetching contributor & group metadata ...")
-            meta = refresh_meta()
+        if meta.get("users") and meta.get("groups"):
+            self._log(
+                f"Contributor & group metadata cached "
+                f"({len(meta['users'])} users, {len(meta['groups'])} groups)."
+            )
         else:
-            print(f"[{step}/{steps}] Contributor & group metadata cached "
-                  f"({len(meta['users'])} users, {len(meta['groups'])} groups).")
+            self._log("Fetching contributor & group metadata ...")
+            refresh_meta()
 
-        # Step: Humanize
-        human_path = outdir / f"{stem}_clean_{model_id}_human.log"
-        step += 1
-        print(f"[{step}/{steps}] Humanizing operations log ...")
+    def _step_humanize(self, filtered_path: Path) -> None:
+        stem = self._log_file.stem
+        human_path = self._outdir / f"{stem}_clean_{self._model_id}_human.log"
+        self._log("Humanizing operations log ...")
         hcount = humanize(str(filtered_path), str(human_path))
-        print(f"       {hcount} entries formatted.")
-        print(f"       Human log: {human_path}")
+        self._info(f"{hcount} entries formatted.")
+        self._info(f"Human log: {human_path}")
 
-        # Step: Extract TTL versions from git
-        if has_repo:
-            models_dir = outdir / "models"
-            step += 1
-            print(f"[{step}/{steps}] Extracting TTL versions from git ...")
-            estats = extract_versions(repo_path, model_id, str(models_dir), after=after)
-            print(f"       {estats}")
-            print(f"       Models dir: {models_dir}")
+    def _step_extract(self) -> Path:
+        models_dir = self._outdir / "models"
+        self._log("Extracting TTL versions from git ...")
+        estats = extract_versions(
+            self._repo_path, self._model_id, str(models_dir), after=self._after,
+        )
+        self._info(str(estats))
+        self._info(f"Models dir: {models_dir}")
+        return models_dir
 
-            # Step: Resolve ontology labels from TTL files
-            step += 1
-            print(f"[{step}/{steps}] Resolving ontology labels from TTL files ...")
-            ttl_files = [str(p) for p in (models_dir / "by_folder").rglob("*.ttl")]
-            ttl_ids = collect_ids_from_files(ttl_files)
-            n_ttl = resolve(ttl_ids, labels)
-            save_cache(labels)
-            print(f"       {n_ttl} new labels resolved ({len(labels)} cached).")
+    def _step_diff(self, models_dir: Path) -> None:
+        diffs_dir = self._outdir / "diffs"
+        self._log("Generating diffs between versions ...")
+        dstats = diff_versions(str(models_dir / "by_folder"), str(diffs_dir))
+        self._info(str(dstats))
+        self._info(f"Diffs dir: {diffs_dir}")
 
-            # Step: Diff consecutive versions
-            diffs_dir = outdir / "diffs"
-            step += 1
-            print(f"[{step}/{steps}] Generating diffs between versions ...")
-            dstats = diff_versions(str(models_dir / "by_folder"), str(diffs_dir))
-            print(f"       {dstats}")
-            print(f"       Diffs dir: {diffs_dir}")
+    def _step_report(self, source_path: Path) -> None:
+        report_path = self._outdir / f"{source_path.stem}_report.txt"
+        self._log("Generating report ...")
+        generate_report(str(source_path), str(report_path))
+        self._info(f"Report: {report_path}")
 
-    # Step: Report
-    report_path = outdir / f"{report_source.stem}_report.txt"
-    step += 1
-    print(f"[{step}/{steps}] Generating report ...")
-    generate_report(str(report_source), str(report_path))
-    print(f"       Report: {report_path}")
+    # ------------------------------------------------------------------
+    # Public run methods
+    # ------------------------------------------------------------------
 
-    print("\nDone.")
+    def run(self) -> None:
+        """Auto-detect mode and run the appropriate pipeline."""
+        self._outdir.mkdir(parents=True, exist_ok=True)
 
+        has_log = self._log_file is not None
+        has_repo = self._repo_path is not None
+
+        if has_log and has_repo:
+            self.run_full()
+        elif has_log:
+            self.run_log_only()
+        elif has_repo:
+            self.run_repo_only()
+        else:
+            raise ValueError("Must provide at least --file or --repo.")
+
+        print("\nDone.")
+
+    def run_full(self) -> None:
+        """Full pipeline: log + repo (9 steps)."""
+        self._total_steps = 9
+        clean_path = self._step_clean()
+        filtered_path = self._step_filter(clean_path)
+        self._step_resolve_ontology([str(filtered_path)])
+        self._step_metadata()
+        self._step_humanize(filtered_path)
+        models_dir = self._step_extract()
+        self._step_resolve_ontology_ttl(models_dir)
+        self._step_diff(models_dir)
+        self._step_report(filtered_path)
+
+    def run_log_only(self) -> None:
+        """Log only: no repo (6 steps)."""
+        self._total_steps = 6
+        clean_path = self._step_clean()
+        filtered_path = self._step_filter(clean_path)
+        self._step_resolve_ontology([str(filtered_path)])
+        self._step_metadata()
+        self._step_humanize(filtered_path)
+        self._step_report(filtered_path)
+
+    def run_repo_only(self) -> None:
+        """Repo only: no log file (4 steps)."""
+        self._total_steps = 4
+        self._step_metadata()
+        models_dir = self._step_extract()
+        self._step_resolve_ontology_ttl(models_dir)
+        self._step_diff(models_dir)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Clean a raw barista log and generate an analysis report.",
+        description="GO Noctua model analysis pipeline.",
+        epilog="""\
+Usage modes:
+  Full (log + repo):  python -m src.pipeline -f log.log -o out/ -m MODEL -r REPO [--after DATE]
+  Log only:           python -m src.pipeline -f log.log -o out/ -m MODEL
+  Repo only:          python -m src.pipeline -o out/ -m MODEL -r REPO [--after DATE]
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("file", help="Path to the raw (dirty) log file.")
-    parser.add_argument("outdir", help="Output directory for cleaned log and report.")
+    parser.add_argument("-f", "--file", help="Path to the raw barista log file.")
+    parser.add_argument("-o", "--outdir", required=True, help="Output directory.")
     parser.add_argument(
-        "-m", "--model",
-        help="Optional model ID to filter for (e.g. 693b3c0900004140).",
+        "-m", "--model", required=True,
+        help="GO model ID (e.g. 693b3c0900004140).",
     )
-    parser.add_argument(
-        "-r", "--repo",
-        help="Path to noctua-models git repo (enables TTL version extraction).",
-    )
+    parser.add_argument("-r", "--repo", help="Path to noctua-models git repo.")
     parser.add_argument(
         "--after",
         help="Only extract TTL versions after this date (e.g. 2026-02-01).",
     )
     args = parser.parse_args()
 
-    run(args.file, args.outdir, model_id=args.model,
-        repo_path=args.repo, after=args.after)
+    if not args.file and not args.repo:
+        parser.error("Must provide at least --file or --repo.")
+
+    pipeline = Pipeline(
+        output_dir=args.outdir,
+        model_id=args.model,
+        log_file=args.file,
+        repo_path=args.repo,
+        after=args.after,
+    )
+    pipeline.run()
 
 
 if __name__ == "__main__":

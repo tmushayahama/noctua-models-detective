@@ -19,7 +19,11 @@
   "GO:1904541": "fungal-type cell wall disassembly involved in conjugation with cellular fusion",
   "GO:1904600": "mating projection actin fusion focus assembly",
   "GO:1990819": "mating projection actin fusion focus",
+  "RO:0002212": "negatively regulates",
+  "RO:0002213": "positively regulates",
   "RO:0002333": "enabled by",
   "RO:0002409": "indirectly negatively regulates",
-  "RO:0002413": "provides input for"
+  "RO:0002413": "provides input for",
+  "RO:0002629": "directly positively regulates",
+  "RO:0002630": "directly negatively regulates"
 }
