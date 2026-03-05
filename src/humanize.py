@@ -58,8 +58,6 @@ class Operation:
             for val in args["values"]:
                 key = val.get("key", "?")
                 value = unquote_plus(val.get("value", "?"))
-                if len(value) > 80:
-                    value = value[:77] + "..."
                 lines.append(f"{indent}  {key}: {value}")
 
         if "format" in args:
