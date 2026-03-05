@@ -1,8 +1,8 @@
-##!/bin/bash
+#!/usr/bin/env bash
 # Full pipeline: barista log + noctua-models git repo
 #
 # Steps: clean → filter → resolve ontology → resolve metadata →
-#        humanize → extract TTL versions → resolve TTL ontology → diff → report
+#        humanize → extract TTL versions → resolve TTL ontology → diff → changelog → report
 #
 # Prerequisites:
 #   - A raw barista log file (e.g. from the Noctua server)

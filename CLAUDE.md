@@ -41,14 +41,15 @@ Each module in `src/` can also be run standalone (e.g., `python src/clean.py hol
 - `Pipeline.from_args()` auto-detects mode based on which CLI args are provided
 - Steps use lazy imports (inside `run()`) to avoid loading unused dependencies
 
-**Processing flow** (full mode): clean → filter → resolve ontology → resolve metadata → humanize → extract TTL versions → resolve TTL ontology → diff → report
+**Processing flow** (full mode): clean → filter → resolve ontology → resolve metadata → humanize → extract TTL versions → resolve TTL ontology → diff → changelog → report
 
 **Key patterns:**
 - Each module exposes a top-level function (e.g., `clean_file()`, `filter_by_model()`, `humanize()`) used by both the pipeline step and standalone CLI
 - Stats dataclasses with `__str__` for consistent progress output
 - Two JSON caches at project root: `ontology_cache.json` (EBI OLS API labels) and `metadata_cache.json` (GitHub go-site contributor/group data)
 - External APIs: EBI OLS4 (`resolve_ontology.py`), GitHub raw YAML (`resolve_metadata.py`)
-- `diff_versions.py` has a lightweight TTL parser (`TtlParser`) that extracts NamedIndividuals, skipping blank nodes and class/property declarations
+- `diff_versions.py` has a lightweight TTL parser (`TtlParser`) that extracts NamedIndividuals, skipping blank nodes and class/property declarations. Its `_resolve_missing_ids()` method catches IDs that `Uri.shorten()` creates (TTL URIs use underscores like `GO_0140378`, but diff output uses colon form `GO:0140378`) and resolves them before label substitution.
+- `changelog.py` parses the plain-text semantic diff and generates a markdown changelog grouped by date
 
 ## Dependencies
 

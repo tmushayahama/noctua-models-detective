@@ -141,6 +141,20 @@ class DiffStep:
         print(f"       Diffs dir: {diffs_dir}")
 
 
+class ChangelogStep:
+    name = "Generate markdown changelog"
+
+    def run(self, ctx: PipelineContext) -> None:
+        from src.changelog import generate_changelog
+
+        changes_path = ctx.output_dir / "diffs" / "changes_human.log"
+        changelog_path = ctx.output_dir / "diffs" / "changelog.md"
+        stats = generate_changelog(str(changes_path), str(changelog_path),
+                                   model_id=ctx.model_id)
+        print(f"       {stats}")
+        print(f"       Changelog: {changelog_path}")
+
+
 class ReportStep:
     name = "Generate report"
 
@@ -165,6 +179,7 @@ FULL_STEPS = [
     ExtractVersionsStep(),
     ResolveOntologyTtlStep(),
     DiffStep(),
+    ChangelogStep(),
     ReportStep(),
 ]
 
@@ -182,4 +197,5 @@ REPO_ONLY_STEPS = [
     ExtractVersionsStep(),
     ResolveOntologyTtlStep(),
     DiffStep(),
+    ChangelogStep(),
 ]

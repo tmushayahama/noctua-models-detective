@@ -328,6 +328,22 @@ class VersionDiffer:
     def _load_lines(self, path: Path) -> list[str]:
         return path.read_text(encoding="utf-8").splitlines(keepends=True)
 
+    @staticmethod
+    def _resolve_missing_ids(text: str) -> None:
+        """Resolve any ontology IDs in *text* that are missing from the cache."""
+        from src.resolve_ontology import collect_ids_from_text, load_cache, resolve, save_cache
+
+        ids = collect_ids_from_text(text)
+        if not ids:
+            return
+        labels = load_cache()
+        missing = {oid for oid in ids if oid not in labels}
+        if not missing:
+            return
+        n = resolve(missing, labels)
+        if n:
+            save_cache(labels)
+
     def diff_all(self) -> DiffStats:
         """Generate diffs for all consecutive version pairs."""
         self._output_dir.mkdir(parents=True, exist_ok=True)
@@ -375,6 +391,8 @@ class VersionDiffer:
         if all_human:
             human_path = self._output_dir / "changes_human.log"
             text = "\n\n".join(all_human) + "\n"
+            # Resolve any IDs that Uri.shorten() created but weren't in the cache
+            self._resolve_missing_ids(text)
             text = substitute_ontology_labels(text)
             text = substitute_metadata(text)
             with open(human_path, "w", encoding="utf-8") as f:

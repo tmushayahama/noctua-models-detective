@@ -28,7 +28,7 @@ python -m src.pipeline \
     --after 2026-02-01
 ```
 
-Steps: clean → filter → resolve ontology → resolve metadata → humanize → extract TTL versions → resolve TTL ontology → diff → report
+Steps: clean → filter → resolve ontology → resolve metadata → humanize → extract TTL versions → resolve TTL ontology → diff → changelog → report
 
 ### Log only (no repo)
 
@@ -55,7 +55,7 @@ python -m src.pipeline \
     --after 2026-02-01
 ```
 
-Steps: resolve metadata → extract TTL versions → resolve TTL ontology → diff
+Steps: resolve metadata → extract TTL versions → resolve TTL ontology → diff → changelog
 
 Example scripts with configurable parameters are in [`scripts/`](scripts/):
 
@@ -86,6 +86,7 @@ python -m src.pipeline [-h] [-f FILE] -o OUTDIR -m MODEL [-r REPO] [--after DATE
 | Humanize | `humanize.py` | Transform filtered log into human-readable operations timeline |
 | Extract versions | `extract_versions.py` | Extract TTL snapshots from noctua-models git history |
 | Diff versions | `diff_versions.py` | Generate semantic diffs between consecutive TTL versions |
+| Changelog | `changelog.py` | Convert semantic diffs into a markdown changelog grouped by date |
 | Report | `report.py` | Generate traffic analysis report (method breakdown, latency, errors) |
 
 ## Standalone scripts
@@ -114,6 +115,9 @@ python src/extract_versions.py C:/work/go/noctua-models-temp 693b3c0900004140 do
 # Diff consecutive TTL versions
 python src/diff_versions.py downloads/models/by_folder -o downloads/diffs
 
+# Generate markdown changelog from diffs
+python src/changelog.py downloads/diffs/changes_human.log -m 693b3c0900004140
+
 # Generate analysis report
 python src/report.py output/hold_clean_693b3c0900004140.log
 ```
@@ -127,7 +131,7 @@ The pipeline uses two local JSON caches to avoid repeated network requests:
 | `ontology_cache.json` | [EBI OLS4 API](https://www.ebi.ac.uk/ols4/) | GO/ECO/RO/BFO ID → human-readable label |
 | `metadata_cache.json` | [geneontology/go-site](https://github.com/geneontology/go-site) | ORCID → contributor nickname, group URL → shorthand |
 
-Caches are created automatically on first run. Delete them to force a refresh.
+Caches are created automatically on first run. Delete them to force a refresh. The diff step also resolves any IDs that only appear after URI shortening (e.g. `GO_0140378` in a TTL URI becomes `GO:0140378` in the diff output) and updates the ontology cache automatically.
 
 ## Modules
 
@@ -173,7 +177,11 @@ Extracts historical TTL file versions from a noctua-models git repo. For each co
 
 ### `src/diff_versions.py`
 
-Compares consecutive TTL snapshots and produces a human-readable changelog showing added/removed individuals, type changes, relationship changes, and annotation edits. Applies ontology and metadata label substitution.
+Compares consecutive TTL snapshots and produces a human-readable changelog showing added/removed individuals, type changes, relationship changes, and annotation edits. Applies ontology and metadata label substitution. Automatically resolves any ontology IDs that appear in the diff output but weren't in the pre-built cache (e.g. IDs created by URI shortening during diffing).
+
+### `src/changelog.py`
+
+Converts the plain-text semantic diff output (`changes_human.log`) into a curator-friendly markdown changelog. Groups changes by date with per-session time ranges, summary statistics, and collapsible `<details>` sections for large batches of similar entries (e.g. bulk evidence node removals).
 
 ### `src/report.py`
 
@@ -197,6 +205,7 @@ val_analysis/
     humanize.py            # Human-readable operations log formatter
     extract_versions.py    # Git TTL version extractor
     diff_versions.py       # Semantic TTL diff generator
+    changelog.py           # Markdown changelog generator
     report.py              # Traffic analysis report generator
     pipeline.py            # Orchestrator (Pipeline class, CLI entry point)
   scripts/

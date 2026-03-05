@@ -1,7 +1,8 @@
 """Tests for src.diff_versions."""
 
 import pytest
-from src.diff_versions import Uri, Individual, TtlParser, SemanticDiff
+from unittest.mock import patch
+from src.diff_versions import Uri, Individual, TtlParser, SemanticDiff, VersionDiffer
 
 
 class TestUri:
@@ -132,3 +133,33 @@ class TestSemanticDiff:
         diff = SemanticDiff()
         text = diff.diff({}, {}, "2026-02-20_08-00", "2026-02-20_09-00")
         assert "2026-02-20_08-00  →  2026-02-20_09-00" in text
+
+
+class TestResolveMissingIds:
+    @patch("src.resolve_ontology.save_cache")
+    @patch("src.resolve_ontology.resolve", return_value=1)
+    @patch("src.resolve_ontology.load_cache", return_value={"GO:0005200": "cached"})
+    def test_resolves_missing_ids(self, mock_load, mock_resolve, mock_save):
+        text = "type: GO:0005200  →  GO:0140378"
+        VersionDiffer._resolve_missing_ids(text)
+        mock_resolve.assert_called_once()
+        # Should only resolve GO:0140378, not GO:0005200 (already cached)
+        ids_arg = mock_resolve.call_args[0][0]
+        assert "GO:0140378" in ids_arg
+        assert "GO:0005200" not in ids_arg
+        mock_save.assert_called_once()
+
+    @patch("src.resolve_ontology.load_cache", return_value={"GO:0005200": "cached"})
+    def test_skips_when_all_cached(self, mock_load):
+        text = "type: GO:0005200"
+        VersionDiffer._resolve_missing_ids(text)
+        # load_cache called, but no resolve call needed
+
+    @patch("src.resolve_ontology.save_cache")
+    @patch("src.resolve_ontology.resolve", return_value=0)
+    @patch("src.resolve_ontology.load_cache", return_value={})
+    def test_no_save_when_nothing_resolved(self, mock_load, mock_resolve, mock_save):
+        text = "type: GO:0140378"
+        VersionDiffer._resolve_missing_ids(text)
+        mock_resolve.assert_called_once()
+        mock_save.assert_not_called()

@@ -1,4 +1,4 @@
-##!/bin/bash
+#!/usr/bin/env bash
 # Log only: barista log analysis without a git repo
 #
 # Steps: clean → filter → resolve ontology → resolve metadata → humanize → report

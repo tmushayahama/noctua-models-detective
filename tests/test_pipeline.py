@@ -17,6 +17,7 @@ from src.steps import (
     ExtractVersionsStep,
     ResolveOntologyTtlStep,
     DiffStep,
+    ChangelogStep,
     ReportStep,
 )
 
@@ -78,14 +79,14 @@ class TestPipelineFromArgs:
 
 
 class TestModeStepCounts:
-    def test_full_has_9_steps(self):
-        assert len(FULL_STEPS) == 9
+    def test_full_has_10_steps(self):
+        assert len(FULL_STEPS) == 10
 
     def test_log_only_has_6_steps(self):
         assert len(LOG_ONLY_STEPS) == 6
 
-    def test_repo_only_has_4_steps(self):
-        assert len(REPO_ONLY_STEPS) == 4
+    def test_repo_only_has_5_steps(self):
+        assert len(REPO_ONLY_STEPS) == 5
 
 
 class TestModeStepOrder:
@@ -94,7 +95,7 @@ class TestModeStepOrder:
         assert types == [
             CleanStep, FilterStep, ResolveOntologyStep, ResolveMetadataStep,
             HumanizeStep, ExtractVersionsStep, ResolveOntologyTtlStep,
-            DiffStep, ReportStep,
+            DiffStep, ChangelogStep, ReportStep,
         ]
 
     def test_log_only_step_order(self):
@@ -108,7 +109,7 @@ class TestModeStepOrder:
         types = [type(s) for s in REPO_ONLY_STEPS]
         assert types == [
             ResolveMetadataStep, ExtractVersionsStep,
-            ResolveOntologyTtlStep, DiffStep,
+            ResolveOntologyTtlStep, DiffStep, ChangelogStep,
         ]
 
 
