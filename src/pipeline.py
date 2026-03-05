@@ -25,6 +25,8 @@ try:
     from src.filter_model import filter_by_model
     from src.humanize import humanize
     from src.report import generate_report
+    from src.resolve_ontology import load_cache, collect_ids_from_files, resolve, save_cache
+    from src.resolve_metadata import load_cache as load_meta_cache, refresh_cache as refresh_meta
 except ImportError:
     from clean import clean_file
     from diff_versions import diff_versions
@@ -32,6 +34,8 @@ except ImportError:
     from filter_model import filter_by_model
     from humanize import humanize
     from report import generate_report
+    from resolve_ontology import load_cache, collect_ids_from_files, resolve, save_cache
+    from resolve_metadata import load_cache as load_meta_cache, refresh_cache as refresh_meta
 
 
 def run(
@@ -51,7 +55,7 @@ def run(
 
     has_model = model_id is not None
     has_repo = has_model and repo_path is not None
-    steps = 1 + (3 if has_model else 0) + (2 if has_repo else 0) + 1
+    steps = 1 + (5 if has_model else 0) + (3 if has_repo else 0) + 1
     step = 0
 
     # Step: Clean
@@ -72,6 +76,25 @@ def run(
         print(f"       Filtered log: {filtered_path}")
         report_source = filtered_path
 
+        # Step: Resolve ontology labels
+        step += 1
+        print(f"[{step}/{steps}] Resolving ontology labels ...")
+        labels = load_cache()
+        ids = collect_ids_from_files([str(filtered_path)])
+        n_resolved = resolve(ids, labels)
+        save_cache(labels)
+        print(f"       {n_resolved} new labels resolved ({len(labels)} cached).")
+
+        # Step: Resolve contributor/group metadata
+        step += 1
+        meta = load_meta_cache()
+        if not meta.get("users") or not meta.get("groups"):
+            print(f"[{step}/{steps}] Fetching contributor & group metadata ...")
+            meta = refresh_meta()
+        else:
+            print(f"[{step}/{steps}] Contributor & group metadata cached "
+                  f"({len(meta['users'])} users, {len(meta['groups'])} groups).")
+
         # Step: Humanize
         human_path = outdir / f"{stem}_clean_{model_id}_human.log"
         step += 1
@@ -88,6 +111,15 @@ def run(
             estats = extract_versions(repo_path, model_id, str(models_dir), after=after)
             print(f"       {estats}")
             print(f"       Models dir: {models_dir}")
+
+            # Step: Resolve ontology labels from TTL files
+            step += 1
+            print(f"[{step}/{steps}] Resolving ontology labels from TTL files ...")
+            ttl_files = [str(p) for p in (models_dir / "by_folder").rglob("*.ttl")]
+            ttl_ids = collect_ids_from_files(ttl_files)
+            n_ttl = resolve(ttl_ids, labels)
+            save_cache(labels)
+            print(f"       {n_ttl} new labels resolved ({len(labels)} cached).")
 
             # Step: Diff consecutive versions
             diffs_dir = outdir / "diffs"

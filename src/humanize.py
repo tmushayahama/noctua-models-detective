@@ -18,12 +18,53 @@ Example::
 import json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from urllib.parse import unquote, unquote_plus, parse_qs
 
 try:
     from src.common import AnsiStripper
+    from src.resolve_metadata import substitute_metadata
 except ImportError:
     from common import AnsiStripper
+    from resolve_metadata import substitute_metadata
+
+
+# ---------------------------------------------------------------------------
+# Ontology label substitution (reads from pre-built cache, no API calls)
+# ---------------------------------------------------------------------------
+
+_ONTOLOGY_PREFIXES = {"GO", "RO", "BFO", "ECO", "SO", "CHEBI", "CL", "UBERON"}
+# Matches ontology IDs that are NOT already inside parentheses (i.e. not
+# already in "label (ID)" form).  Negative lookbehind for '(' avoids
+# double-substitution when the source data already contains labelled IDs.
+_ONTOLOGY_ID_RE = re.compile(r"(?<!\()([A-Z]{2,}:\d{5,})\b")
+_CACHE_PATH = Path(__file__).resolve().parent.parent / "ontology_cache.json"
+
+
+def _load_ontology_labels() -> dict[str, str]:
+    """Load the ontology label cache (built by ``resolve_ontology.py``)."""
+    if _CACHE_PATH.exists():
+        try:
+            return json.loads(_CACHE_PATH.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+def substitute_ontology_labels(text: str) -> str:
+    """Replace bare ontology IDs with ``label (ID)`` using the local cache."""
+    labels = _load_ontology_labels()
+    if not labels:
+        return text
+
+    def _repl(m: re.Match) -> str:
+        obo_id = m.group(1)
+        if obo_id.split(":")[0] not in _ONTOLOGY_PREFIXES:
+            return obo_id
+        label = labels.get(obo_id)
+        return f"{label} ({obo_id})" if label else obo_id
+
+    return _ONTOLOGY_ID_RE.sub(_repl, text)
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +84,14 @@ class Operation:
         lines = [f"{indent}{self.entity}.{self.operation}"]
 
         args = self.arguments
+
+        # Edge operations: subject --predicate--> object
+        if "subject" in args and "predicate" in args and "object" in args:
+            subj = args["subject"].rsplit("/", 1)[-1]
+            obj = args["object"].rsplit("/", 1)[-1]
+            pred = args["predicate"]
+            lines.append(f"{indent}  {subj} --{pred}--> {obj}")
+
         if "individual" in args:
             lines.append(f"{indent}  individual: {args['individual']}")
         if "model-id" in args:
@@ -252,6 +301,8 @@ def humanize(input_path: str, output_path: str) -> int:
     entries = parser.parse(input_path)
 
     text = HumanFormatter.format(entries)
+    text = substitute_ontology_labels(text)
+    text = substitute_metadata(text)
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(text)

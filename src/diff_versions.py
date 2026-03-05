@@ -21,6 +21,13 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+try:
+    from src.humanize import substitute_ontology_labels
+    from src.resolve_metadata import substitute_metadata
+except ImportError:
+    from humanize import substitute_ontology_labels
+    from resolve_metadata import substitute_metadata
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -371,8 +378,11 @@ class VersionDiffer:
         # Write combined human-readable changelog
         if all_human:
             human_path = self._output_dir / "changes_human.log"
+            text = "\n\n".join(all_human) + "\n"
+            text = substitute_ontology_labels(text)
+            text = substitute_metadata(text)
             with open(human_path, "w", encoding="utf-8") as f:
-                f.write("\n\n".join(all_human) + "\n")
+                f.write(text)
 
         return stats
 
